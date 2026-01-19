@@ -5,6 +5,7 @@ import { supabase, type Game, type Player, type GameEvent } from "@/lib/supabase
 import { Button } from "@/components/ui/button"
 import { QRCodeSVG } from "qrcode.react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useDevMode } from "@/components/DevMode"
 
 const FTX_MESSAGES = [
   "Yield is up! Your funds are SAFU!",
@@ -22,26 +23,88 @@ const JOURNALIST_EVENTS = [
 ]
 
 const PAUSE_EXPLANATIONS = [
-  { minute: 1, title: "The Setup", text: "In 2019, Sam Bankman-Fried created FTX, marketed as a safe, regulated exchange. Customers deposited billions, trusting their money was secure." },
-  { minute: 2, title: "The Secret", text: "Behind the scenes, FTX secretly funneled customer deposits to Alameda Research — their own trading firm — to make risky bets." },
-  { minute: 3, title: "The Cracks", text: "When reporters started asking questions, FTX reassured everyone. But the truth was: customer money had been gambled away." },
-  { minute: 4, title: "The Run", text: "Once trust broke, everyone tried to withdraw at once. But the money wasn't there. This is called a 'bank run.'" },
+  { 
+    minute: 0, 
+    title: "The Honeymoon Phase", 
+    points: [
+      { icon: "account_balance", text: "Welcome to FTX: The world's most trusted exchange." },
+      { icon: "trending_up", text: "Deposit $100: Watch it grow +1% every second." },
+      { icon: "verified", text: "The \"SAFU\" Promise: Your funds are 1:1 backed and fully liquid." },
+      { icon: "rocket_launch", text: "SBF's Vision: \"We're building the future of finance.\"" }
+    ]
+  },
+  { 
+    minute: 1, 
+    title: "The Hidden Backdoor", 
+    points: [
+      { icon: "savings", text: "The Truth: FTX is a \"Personal Piggy Bank.\"" },
+      { icon: "backup", text: "The Backdoor: $8 Billion moved to Alameda Research." },
+      { icon: "casino", text: "The Buy-In: They're using your cash to make risky bets." },
+      { icon: "visibility_off", text: "The Illusion: Your balance is rising, but the vault is emptying." }
+    ]
+  },
+  { 
+    minute: 2, 
+    title: "The First Cracks", 
+    points: [
+      { icon: "article", text: "Breaking News: \"Are FTX and Alameda mixing funds?\"" },
+      { icon: "trending_down", text: "The FTT Crash: Native token drops -40%." },
+      { icon: "campaign", text: "SBF Tweets: \"FTX is fine. Assets are fine.\" (Deleted later)" },
+      { icon: "help", text: "Decision Time: Do you trust the CEO or the rumors?" }
+    ]
+  },
+  { 
+    minute: 3, 
+    title: "The Bank Run", 
+    points: [
+      { icon: "trending_down", text: "Total Panic: Rival exchanges are dumping FTX tokens." },
+      { icon: "logout", text: "The $6 Billion Exit: Everyone is hitting 'Withdraw' at once." },
+      { icon: "hourglass_empty", text: "The Freeze is Coming: Withdrawals are slowing down." },
+      { icon: "warning", text: "FINAL WARNING: Get out now or go down with the ship." }
+    ]
+  },
+  { 
+    minute: 4, 
+    title: "The Collapse", 
+    points: [
+      { icon: "lock", text: "GAME OVER: Withdrawals Frozen." },
+      { icon: "money_off", text: "The Reality: $8 Billion Missing." },
+      { icon: "gavel", text: "The Verdict: SBF sentenced to 25 years." },
+      { icon: "account_balance_wallet", text: "Total Claims: $100+ | Actual Cash: $0.00" }
+    ]
+  },
 ]
 
 export default function HostPage({ params }: { params: Promise<{ gameId: string }> }) {
   const { gameId } = use(params)
+  const { isDevMode, setCurrentStep, setGameId } = useDevMode()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [events, setEvents] = useState<GameEvent[]>([])
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
-  const [pauseInfo, setPauseInfo] = useState<{ title: string; text: string } | null>(null)
+  const [currentStoryTime, setCurrentStoryTime] = useState<{ index: number; title: string; points: Array<{ icon: string; text: string }> } | null>(null)
   const [lastFtxMessage, setLastFtxMessage] = useState("")
   const [showJournalist, setShowJournalist] = useState(false)
   const [journalistMessage, setJournalistMessage] = useState("")
   const [screenShake, setScreenShake] = useState(false)
   const [totalVault, setTotalVault] = useState(0)
   const [withdrawnPlayers, setWithdrawnPlayers] = useState(0)
+
+  useEffect(() => {
+    setGameId(gameId)
+  }, [gameId, setGameId])
+
+  useEffect(() => {
+    if (!game) return
+    
+    if (game.status === "waiting") {
+      setCurrentStep(1)
+    } else if (game.status === "playing") {
+      setCurrentStep(2)
+    } else if (game.status === "ended") {
+      setCurrentStep(4)
+    }
+  }, [game, setCurrentStep])
 
   const fetchGame = useCallback(async () => {
     const { data } = await supabase.from("games").select().eq("id", gameId).single()
@@ -78,13 +141,12 @@ export default function HostPage({ params }: { params: Promise<{ gameId: string 
   }, [gameId, fetchGame, fetchPlayers])
 
   useEffect(() => {
-    if (game?.status !== "playing" || isPaused) return
+    if (game?.status !== "playing") return
 
     const timer = setInterval(() => {
       if (!game.started_at) return
       const start = new Date(game.started_at).getTime()
-      const pausedTime = game.paused_at ? (Date.now() - new Date(game.paused_at).getTime()) : 0
-      const elapsed = Math.floor((Date.now() - start - pausedTime) / 1000)
+      const elapsed = Math.floor((Date.now() - start) / 1000)
       setElapsedSeconds(elapsed)
 
       const activePlayerCount = players.filter(p => !p.has_withdrawn).length
@@ -98,10 +160,10 @@ export default function HostPage({ params }: { params: Promise<{ gameId: string 
     }, 100)
 
     return () => clearInterval(timer)
-  }, [game, isPaused, players])
+  }, [game, players])
 
   useEffect(() => {
-    if (game?.status !== "playing" || isPaused) return
+    if (game?.status !== "playing") return
 
     const ftxInterval = setInterval(() => {
       if (elapsedSeconds < 240) {
@@ -112,7 +174,7 @@ export default function HostPage({ params }: { params: Promise<{ gameId: string 
     }, 30000)
 
     return () => clearInterval(ftxInterval)
-  }, [game, isPaused, elapsedSeconds, gameId])
+  }, [game, elapsedSeconds, gameId])
 
   useEffect(() => {
     if (game?.status !== "playing") return
@@ -130,42 +192,40 @@ export default function HostPage({ params }: { params: Promise<{ gameId: string 
   }, [elapsedSeconds, game, gameId])
 
   useEffect(() => {
-    if (game?.status !== "playing") return
+    if (game?.status !== "playing") {
+      setCurrentStoryTime(null)
+      return
+    }
 
-    PAUSE_EXPLANATIONS.forEach(pause => {
-      const pauseTime = pause.minute * 60
-      if (elapsedSeconds === pauseTime && !isPaused) {
-        triggerPause(pause.title, pause.text)
+    // Determine which story time we're currently in
+    let currentIndex = -1
+    for (let i = 0; i < PAUSE_EXPLANATIONS.length; i++) {
+      const storyTime = PAUSE_EXPLANATIONS[i]
+      const storyTimeSeconds = storyTime.minute * 60
+      const nextStoryTimeSeconds = i < PAUSE_EXPLANATIONS.length - 1 
+        ? PAUSE_EXPLANATIONS[i + 1].minute * 60 
+        : 300 // End of game at 5 minutes
+
+      if (elapsedSeconds >= storyTimeSeconds && elapsedSeconds < nextStoryTimeSeconds) {
+        currentIndex = i
+        break
       }
-    })
-  }, [elapsedSeconds, game, isPaused])
+    }
+
+    if (currentIndex >= 0) {
+      const story = PAUSE_EXPLANATIONS[currentIndex]
+      setCurrentStoryTime({ index: currentIndex, title: story.title, points: story.points })
+    } else {
+      setCurrentStoryTime(null)
+    }
+  }, [elapsedSeconds, game])
 
   const startGame = async () => {
     await supabase.from("games").update({ status: "playing", started_at: new Date().toISOString() }).eq("id", gameId)
     await supabase.from("game_events").insert({ game_id: gameId, event_type: "game_start", message: "Game has started!" })
+    setCurrentStep(2)
   }
 
-  const triggerPause = async (title: string, text: string) => {
-    setIsPaused(true)
-    setPauseInfo({ title, text })
-    await supabase.from("games").update({ status: "paused", paused_at: new Date().toISOString() }).eq("id", gameId)
-    await supabase.from("game_events").insert({ game_id: gameId, event_type: "pause", message: text })
-  }
-
-  const resumeGame = async () => {
-    if (!game?.paused_at || !game?.started_at) return
-    const pauseDuration = Date.now() - new Date(game.paused_at).getTime()
-    const newStartedAt = new Date(new Date(game.started_at).getTime() + pauseDuration).toISOString()
-    
-    setIsPaused(false)
-    setPauseInfo(null)
-    await supabase.from("games").update({ 
-      status: "playing", 
-      paused_at: null,
-      started_at: newStartedAt 
-    }).eq("id", gameId)
-    await supabase.from("game_events").insert({ game_id: gameId, event_type: "resume", message: "Game resumed" })
-  }
 
   const endGame = async () => {
     await supabase.from("games").update({ status: "ended", total_vault_display: totalVault, actual_vault: 0 }).eq("id", gameId)
@@ -286,100 +346,137 @@ export default function HostPage({ params }: { params: Promise<{ gameId: string 
           </div>
         )}
 
-        {(game.status === "playing" || game.status === "paused") && (
-          <>
-            <div className="crypto-card rounded-2xl p-6 mb-6">
-              <div className="text-center">
-                <p className="text-muted-foreground text-sm mb-2">FTX TOTAL VAULT BALANCE</p>
-                <p className="text-6xl md:text-8xl font-bold neon-text-green animate-pulse-glow font-mono">
-                  {formatMoney(totalVault)}
-                </p>
-                <p className="text-muted-foreground mt-2">+1% per second • {players.filter(p => !p.has_withdrawn).length} active depositors</p>
+        {game.status === "playing" && (
+          <div className="flex gap-6">
+            {/* Sidebar */}
+            <div className="w-80 flex-shrink-0 space-y-4">
+              <div className="crypto-card rounded-full p-4">
+                <div className="text-center">
+                  <p className="text-muted-foreground text-xs mb-1">FTX TOTAL VAULT BALANCE</p>
+                  <p className="text-3xl font-bold neon-text-green animate-pulse-glow font-mono">
+                    {formatMoney(totalVault)}
+                  </p>
+                  <p className="text-muted-foreground text-xs mt-1">+1% per second • {players.filter(p => !p.has_withdrawn).length} active depositors</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="crypto-card rounded-xl p-3">
+                  <p className="text-muted-foreground text-xs mb-1">Players</p>
+                  <p className="text-xl font-bold">{players.length}</p>
+                </div>
+                <div className="crypto-card rounded-xl p-3">
+                  <p className="text-muted-foreground text-xs mb-1">Withdrawn</p>
+                  <p className="text-xl font-bold text-[#00d4ff]">{withdrawnPlayers}</p>
+                </div>
+                <div className="crypto-card rounded-xl p-3">
+                  <p className="text-muted-foreground text-xs mb-1">Phase</p>
+                  <p className="text-xl font-bold">{elapsedSeconds < 240 ? "Normal" : <span className="neon-text-red">CRISIS</span>}</p>
+                </div>
               </div>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6 mb-6">
-              <div className="crypto-card rounded-xl p-4">
-                <p className="text-muted-foreground text-sm mb-1">Players</p>
-                <p className="text-2xl font-bold">{players.length}</p>
-              </div>
-              <div className="crypto-card rounded-xl p-4">
-                <p className="text-muted-foreground text-sm mb-1">Withdrawn</p>
-                <p className="text-2xl font-bold text-[#00d4ff]">{withdrawnPlayers}</p>
-              </div>
-              <div className="crypto-card rounded-xl p-4">
-                <p className="text-muted-foreground text-sm mb-1">Phase</p>
-                <p className="text-2xl font-bold">{elapsedSeconds < 240 ? "Normal" : <span className="neon-text-red">CRISIS</span>}</p>
-              </div>
-            </div>
+            {/* Main Area */}
+            <div className="flex-1 space-y-6">
+              {/* Story Time - Fixed at top, appears immediately */}
+              {currentStoryTime && (() => {
+                const storyTimeSeconds = PAUSE_EXPLANATIONS[currentStoryTime.index].minute * 60
+                const nextStoryTimeSeconds = currentStoryTime.index < PAUSE_EXPLANATIONS.length - 1
+                  ? PAUSE_EXPLANATIONS[currentStoryTime.index + 1].minute * 60
+                  : 300 // End of game
+                const timeRemaining = nextStoryTimeSeconds - elapsedSeconds
+                const totalDuration = nextStoryTimeSeconds - storyTimeSeconds
+                const progressPercent = Math.max(0, Math.min(100, (timeRemaining / totalDuration) * 100))
 
-            {lastFtxMessage && (
-              <motion.div
-                key={lastFtxMessage}
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="crypto-card rounded-xl p-4 mb-6 border-[#00ff88]/30"
-              >
-                <p className="text-sm text-muted-foreground mb-1">FTX Official</p>
-                <p className="text-lg neon-text-green">{lastFtxMessage}</p>
-              </motion.div>
-            )}
-
-            <AnimatePresence>
-              {showJournalist && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="crypto-card rounded-xl p-6 mb-6 border-destructive/50 bg-destructive/10"
-                >
-                  <p className="text-sm text-destructive mb-1 font-semibold">⚡ BREAKING NEWS</p>
-                  <p className="text-xl neon-text-red">{journalistMessage}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {isPaused && pauseInfo && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-                >
-                  <div className="crypto-card rounded-2xl p-8 max-w-xl w-full text-center">
-                    <p className="text-sm text-[#00d4ff] font-semibold mb-2">PAUSE — STORY TIME</p>
-                    <h2 className="text-3xl font-bold mb-4">{pauseInfo.title}</h2>
-                    <p className="text-lg text-muted-foreground mb-6">{pauseInfo.text}</p>
-                    <Button onClick={resumeGame} className="bg-[#00ff88] hover:bg-[#00dd77] text-black font-semibold h-12 px-8">
-                      RESUME GAME
-                    </Button>
+                return (
+                  <div className="crypto-card rounded-2xl p-6 border-[#00d4ff]/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-[#00d4ff] font-semibold">STORY TIME</span>
+                        <span className="text-xs text-muted-foreground">
+                          {currentStoryTime.index + 1} / {PAUSE_EXPLANATIONS.length}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {Math.max(0, timeRemaining)}s remaining
+                      </span>
+                    </div>
+                    
+                    <h3 className="text-xl font-bold mb-3">{currentStoryTime.title}</h3>
+                    <div className="space-y-2 mb-4">
+                      {currentStoryTime.points.map((point, idx) => (
+                        <div key={idx} className="flex items-start gap-3 text-muted-foreground text-sm">
+                          <span className="material-symbols-outlined text-[#00d4ff] flex-shrink-0 mt-0.5" style={{ fontSize: '20px' }}>
+                            {point.icon}
+                          </span>
+                          <span className="leading-relaxed">{point.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="w-full bg-background/50 rounded-full h-2 overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-[#00d4ff] to-[#00ff88]"
+                        initial={{ width: "100%" }}
+                        animate={{ width: `${progressPercent}%` }}
+                        transition={{ duration: 1, ease: "linear" }}
+                      />
+                    </div>
                   </div>
+                )
+              })()}
+
+              {/* Player Status */}
+              <div className="crypto-card rounded-xl p-4">
+                <h3 className="font-semibold mb-3">Player Status</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {players.map(player => (
+                    <div
+                      key={player.id}
+                      className={`rounded-lg px-3 py-2 text-sm ${
+                        player.has_withdrawn
+                          ? "bg-[#00d4ff]/20 border border-[#00d4ff]/30"
+                          : "bg-background/50"
+                      }`}
+                    >
+                      <p className="truncate font-medium">{player.name}</p>
+                      <p className={`font-mono text-xs ${player.has_withdrawn ? "text-[#00d4ff]" : "text-[#00ff88]"}`}>
+                        {player.has_withdrawn ? "ESCAPED" : formatMoney(player.balance)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* FTX Messages */}
+              {lastFtxMessage && (
+                <motion.div
+                  key={lastFtxMessage}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="crypto-card rounded-xl p-4 border-[#00ff88]/30"
+                >
+                  <p className="text-sm text-muted-foreground mb-1">FTX Official</p>
+                  <p className="text-lg neon-text-green">{lastFtxMessage}</p>
                 </motion.div>
               )}
-            </AnimatePresence>
 
-            <div className="crypto-card rounded-xl p-4">
-              <h3 className="font-semibold mb-3">Player Status</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                {players.map(player => (
-                  <div
-                    key={player.id}
-                    className={`rounded-lg px-3 py-2 text-sm ${
-                      player.has_withdrawn
-                        ? "bg-[#00d4ff]/20 border border-[#00d4ff]/30"
-                        : "bg-background/50"
-                    }`}
+              {/* Journalist Messages */}
+              <AnimatePresence>
+                {showJournalist && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="crypto-card rounded-xl p-6 border-destructive/50 bg-destructive/10"
                   >
-                    <p className="truncate font-medium">{player.name}</p>
-                    <p className={`font-mono text-xs ${player.has_withdrawn ? "text-[#00d4ff]" : "text-[#00ff88]"}`}>
-                      {player.has_withdrawn ? "ESCAPED" : formatMoney(player.balance)}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                    <p className="text-sm text-destructive mb-1 font-semibold">⚡ BREAKING NEWS</p>
+                    <p className="text-xl neon-text-red">{journalistMessage}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

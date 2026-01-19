@@ -6,15 +6,21 @@ import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { motion } from "framer-motion"
+import { useDevMode } from "@/components/DevMode"
 
 function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { isDevMode, setGameId, setCurrentStep } = useDevMode()
   const [gameCode, setGameCode] = useState("")
   const [playerName, setPlayerName] = useState("")
   const [isCreating, setIsCreating] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState("")
+
+  useEffect(() => {
+    setCurrentStep(0)
+  }, [setCurrentStep])
 
   useEffect(() => {
     const code = searchParams.get("code")
@@ -44,6 +50,32 @@ function HomeContent() {
         .single()
 
       if (dbError) throw dbError
+
+      // In dev mode, create bot players
+      if (isDevMode && data) {
+        const botNames = [
+          "Alice", "Bob", "Charlie", "Diana", "Eve", "Frank", "Grace", "Henry",
+          "Ivy", "Jack", "Kate", "Liam", "Mia", "Noah", "Olivia", "Paul",
+          "Quinn", "Rachel", "Sam", "Tina", "Uma", "Victor", "Wendy", "Xavier"
+        ]
+        
+        const botsToCreate = Math.min(15, botNames.length)
+        const botPlayers = []
+        
+        for (let i = 0; i < botsToCreate; i++) {
+          botPlayers.push({
+            game_id: data.id,
+            name: botNames[i],
+            role: "customer",
+            balance: 100
+          })
+        }
+
+        await supabase.from("players").insert(botPlayers)
+      }
+
+      setGameId(data.id)
+      setCurrentStep(1)
       router.push(`/host/${data.id}`)
     } catch {
       setError("Failed to create game")
@@ -152,7 +184,7 @@ function HomeContent() {
           onClick={createGame}
           disabled={isCreating}
           variant="outline"
-          className="w-full h-12 border-[#00d4ff]/30 text-[#00d4ff] hover:bg-[#00d4ff]/10"
+          className="w-full h-12 border-[#00d4ff]/30 text-[#00d4ff] hover:bg-[#00d4ff]/10 hover:text-[#00d4ff] cursor-pointer"
         >
           {isCreating ? "Creating..." : "HOST NEW GAME"}
         </Button>
@@ -175,7 +207,6 @@ function HomeContent() {
         className="mt-12 text-center text-muted-foreground text-sm"
       >
         <p>For 20-30 players • 5-minute experience</p>
-        <p className="mt-1">Learn how trust hid insolvency until it was too late</p>
       </motion.div>
     </div>
   )

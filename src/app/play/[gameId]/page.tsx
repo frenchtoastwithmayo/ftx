@@ -4,9 +4,11 @@ import { useEffect, useState, useCallback, use } from "react"
 import { supabase, type Game, type Player, type GameEvent } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
+import { useDevMode } from "@/components/DevMode"
 
 export default function PlayPage({ params }: { params: Promise<{ gameId: string }> }) {
   const { gameId } = use(params)
+  const { setCurrentStep } = useDevMode()
   const [game, setGame] = useState<Game | null>(null)
   const [player, setPlayer] = useState<Player | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
@@ -20,14 +22,19 @@ export default function PlayPage({ params }: { params: Promise<{ gameId: string 
   const [journalistMessage, setJournalistMessage] = useState("")
   const [showJournalist, setShowJournalist] = useState(false)
   const [screenShake, setScreenShake] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
-  const [pauseMessage, setPauseMessage] = useState("")
+
+  useEffect(() => {
+    if (game?.status === "playing" || game?.status === "paused") {
+      setCurrentStep(3)
+    } else if (game?.status === "ended") {
+      setCurrentStep(4)
+    }
+  }, [game, setCurrentStep])
 
   const fetchGame = useCallback(async () => {
     const { data } = await supabase.from("games").select().eq("id", gameId).single()
     if (data) {
       setGame(data)
-      setIsPaused(data.status === "paused")
     }
   }, [gameId])
 
@@ -61,13 +68,6 @@ export default function PlayPage({ params }: { params: Promise<{ gameId: string 
           setScreenShake(true)
           setTimeout(() => setScreenShake(false), 500)
           setTimeout(() => setShowJournalist(false), 8000)
-        } else if (event.event_type === "pause") {
-          setIsPaused(true)
-          setPauseMessage(event.message)
-        } else if (event.event_type === "resume") {
-          setIsPaused(false)
-          setPauseMessage("")
-        }
       })
       .subscribe()
 
@@ -75,13 +75,12 @@ export default function PlayPage({ params }: { params: Promise<{ gameId: string 
   }, [gameId, fetchGame, fetchPlayer])
 
   useEffect(() => {
-    if (game?.status !== "playing" || isPaused || hasWithdrawn) return
+    if (game?.status !== "playing" || hasWithdrawn) return
 
     const timer = setInterval(() => {
       if (!game.started_at) return
       const start = new Date(game.started_at).getTime()
-      const pausedTime = game.paused_at ? (Date.now() - new Date(game.paused_at).getTime()) : 0
-      const elapsed = Math.floor((Date.now() - start - pausedTime) / 1000)
+      const elapsed = Math.floor((Date.now() - start) / 1000)
       setElapsedSeconds(Math.max(0, elapsed))
       
       const newBalance = 100 * (1 + 0.01 * Math.max(0, elapsed))
@@ -89,7 +88,7 @@ export default function PlayPage({ params }: { params: Promise<{ gameId: string 
     }, 100)
 
     return () => clearInterval(timer)
-  }, [game, isPaused, hasWithdrawn])
+  }, [game, hasWithdrawn])
 
   const handleWithdraw = async () => {
     if (!player || hasWithdrawn || isWithdrawing) return
@@ -297,22 +296,6 @@ export default function PlayPage({ params }: { params: Promise<{ gameId: string 
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
-          {isPaused && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-            >
-              <div className="crypto-card rounded-2xl p-6 max-w-md w-full text-center">
-                <p className="text-sm text-[#00d4ff] font-semibold mb-2">GAME PAUSED</p>
-                <p className="text-muted-foreground">{pauseMessage}</p>
-                <p className="text-sm text-muted-foreground mt-4">Listen to the instructor...</p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <div className="mt-6 text-center">
           <p className="text-muted-foreground text-xs">
